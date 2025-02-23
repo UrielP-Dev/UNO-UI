@@ -1,30 +1,49 @@
 import { PawPrint } from 'lucide-react';
 
-const AuthForm = ({ isLogin }) => {
+const AuthForm = ({ isLogin, onSubmit }) => {
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const formData = {
+      username: e.target.username.value,
+      password: e.target.password.value,
+    };
+    
+    if (!isLogin) {
+      formData.email = e.target.email.value;
+    }
+    
+    onSubmit(formData);
+  };
+
   return (
-    <form className="space-y-4 w-full">
+    <form onSubmit={handleSubmit} className="space-y-4 w-full">
+      <div className="space-y-2">
+        <label className="block text-amber-800 font-medium">Username</label>
+        <input 
+          type="text"
+          name="username"
+          className="w-full px-4 py-2 rounded-xl border-2 border-amber-200 focus:border-amber-400 focus:outline-none transition-colors bg-white/80"
+          placeholder="CoolCat123"
+        />
+      </div>
+      
       {!isLogin && (
         <div className="space-y-2">
-          <label className="block text-amber-800 font-medium">Username</label>
+          <label className="block text-amber-800 font-medium">Email</label>
           <input 
-            type="text"
+            type="email"
+            name="email"
             className="w-full px-4 py-2 rounded-xl border-2 border-amber-200 focus:border-amber-400 focus:outline-none transition-colors bg-white/80"
-            placeholder="CoolCat123"
+            placeholder="cat@email.com"
           />
         </div>
       )}
-      <div className="space-y-2">
-        <label className="block text-amber-800 font-medium">Email</label>
-        <input 
-          type="email"
-          className="w-full px-4 py-2 rounded-xl border-2 border-amber-200 focus:border-amber-400 focus:outline-none transition-colors bg-white/80"
-          placeholder="cat@email.com"
-        />
-      </div>
+      
       <div className="space-y-2">
         <label className="block text-amber-800 font-medium">Password</label>
         <input 
           type="password"
+          name="password"
           className="w-full px-4 py-2 rounded-xl border-2 border-amber-200 focus:border-amber-400 focus:outline-none transition-colors bg-white/80"
           placeholder="••••••••"
         />
