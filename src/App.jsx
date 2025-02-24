@@ -1,28 +1,17 @@
-import { useState, useEffect } from 'react'
+import { Routes, Route } from 'react-router-dom';
 import './App.css'
 import AuthPage from './pages/AuthPage'
 import HomePage from './pages/HomePage'
+import GamePage from './pages/GamePage'
 
 function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [username, setUsername] = useState('');
-
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      setIsAuthenticated(true);
-    }
-  }, []);
-
-  const handleLogin = (token, username) => {
-    localStorage.setItem('token', token);
-    setUsername(username);
-    setIsAuthenticated(true);
-  };
-
-  return isAuthenticated ? 
-    <HomePage username={username} /> : 
-    <AuthPage onLogin={handleLogin} />;
+  return (
+    <Routes>
+      <Route path="/" element={<HomePage />} />
+      <Route path="/auth" element={<AuthPage />} />
+      <Route path="/game/:gameId" element={<GamePage />} />
+    </Routes>
+  );
 }
 
 export default App;
