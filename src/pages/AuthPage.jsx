@@ -9,6 +9,17 @@ const AuthPage = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [error, setError] = useState(null);
 
+  const decodeToken = (token) => {
+    try {
+      const [, payloadBase64] = token.split('.');
+      const decodedPayload = JSON.parse(atob(payloadBase64));
+      return decodedPayload;
+    } catch (error) {
+      console.error('Error decoding token:', error);
+      return null;
+    }
+  };
+
   const handleSubmit = async (formData) => {
     try {
       const endpoint = isLogin ? '/auth/login' : '/auth/register';
@@ -21,16 +32,26 @@ const AuthPage = () => {
       });
 
       const data = await response.json();
-      
+
       if (!response.ok) {
         throw new Error(data.message || 'Error en la autenticación');
       }
 
-      localStorage.setItem('token', data.access_token);
-      localStorage.setItem('userId', data.user_id);
-      localStorage.setItem('username', formData.username);
+      const token = data.access_token;
+      localStorage.setItem('token', token);
+
+      // Decodificar el JWT para extraer el userId
+      const payload = decodeToken(token);
+      if (payload && payload._id) {
+        localStorage.setItem('userId', payload._id);
+        console.log('userId guardado en localStorage:', localStorage.getItem('userId'));
+      } else {
+        console.warn('userId no encontrado en el payload');
+      }
       
-      // Redirigir al usuario a la página principal después del login exitoso
+      
+      localStorage.setItem('username', formData.username);
+
       navigate('/');
     } catch (err) {
       setError(err.message);

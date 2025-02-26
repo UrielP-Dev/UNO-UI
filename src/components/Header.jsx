@@ -1,26 +1,28 @@
-import { LogOut, Cat } from 'lucide-react';
+import { LogOut, Cat } from "lucide-react";
+import PropTypes from "prop-types";
 
 const Header = ({ username, onLogout }) => {
   const handleLogout = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:3000/auth/logout', {
-        method: 'POST',
+      const token = localStorage.getItem("token");
+      const response = await fetch("http://localhost:3000/auth/logout", {
+        method: "POST",
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
       });
 
       if (response.ok) {
-        localStorage.removeItem('token');
-        localStorage.removeItem('userId');
-        window.location.href = '/auth';
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+        localStorage.removeItem("userId");
+        onLogout();
       } else {
-        console.error('Error during logout');
+        console.error("Error during logout");
       }
     } catch (error) {
-      console.error('Error during logout:', error);
+      console.error("Error during logout:", error);
     }
   };
 
@@ -31,7 +33,7 @@ const Header = ({ username, onLogout }) => {
           <h1 className="text-2xl font-bold bg-gradient-to-r from-orange-500 to-red-500 text-transparent bg-clip-text">
             UNO Game
           </h1>
-          
+
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-100">
               <span className="text-amber-800 font-medium">{username}</span>
@@ -39,7 +41,7 @@ const Header = ({ username, onLogout }) => {
                 <Cat className="w-4 h-4 text-white" />
               </div>
             </div>
-            
+
             <button
               onClick={handleLogout}
               className="p-2 text-amber-600 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors"
@@ -52,6 +54,11 @@ const Header = ({ username, onLogout }) => {
       </div>
     </header>
   );
+};
+
+Header.propTypes = {
+  username: PropTypes.string.isRequired,
+  onLogout: PropTypes.func.isRequired,
 };
 
 export default Header;

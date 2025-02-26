@@ -5,6 +5,9 @@ const GameRoomCard = ({ room }) => {
   const navigate = useNavigate();
   const isHost = room.creator._id === localStorage.getItem('userId');
   
+  // Aseguramos que players sea un array, por si viene como undefined
+  const players = room.players || [];
+
   const handleRoomAction = async (action) => {
     try {
       let endpoint = '';
@@ -61,14 +64,15 @@ const GameRoomCard = ({ room }) => {
         
         <div className="flex items-center gap-2 text-amber-700 mb-2 text-xs">
           <Users className="w-3 h-3" />
-          <span>{room.players.length}/6 players</span>
+          <span>{players.length}/6 players</span>
         </div>
 
         <div className="mb-3">
           <h4 className="font-medium text-xs text-amber-800 mb-1">Players:</h4>
           <div className="space-y-1 max-h-[100px] overflow-y-auto">
-            {room.players.map(player => (
-              <div key={player._id} className="flex items-center gap-2">
+            {players.map((player, index) => (
+              // Usamos player._id, y en caso de no existir, usamos index
+              <div key={player._id || index} className="flex items-center gap-2">
                 {player._id === room.creator._id ? (
                   <div className="w-5 h-5 bg-gradient-to-r from-orange-500 to-red-500 rounded-full flex items-center justify-center">
                     <Crown className="w-3 h-3 text-white" />
@@ -88,7 +92,7 @@ const GameRoomCard = ({ room }) => {
       {room.state === 'waiting' && (
         <button 
           onClick={() => handleRoomAction(isHost ? 'start' : 'join')}
-          disabled={isHost ? room.players.length < 2 : room.players.length >= 6}
+          disabled={isHost ? players.length < 2 : players.length >= 6}
           className={`w-full font-medium py-1.5 px-3 rounded-lg text-xs
             transform hover:scale-[1.02] transition-all duration-200
             focus:outline-none focus:ring-2 focus:ring-offset-2
@@ -100,7 +104,7 @@ const GameRoomCard = ({ room }) => {
         >
           {isHost 
             ? 'Start Game' 
-            : room.players.some(p => p._id === localStorage.getItem('userId')) 
+            : players.some(p => p._id === localStorage.getItem('userId')) 
               ? 'Leave Room' 
               : 'Join Room'
           }

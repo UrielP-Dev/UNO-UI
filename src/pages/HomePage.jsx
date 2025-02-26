@@ -5,11 +5,13 @@ import GameRoomCard from '../components/GameRoomCard';
 import RoomsHeader from '../components/RoomsHeader';
 import Header from '../components/Header';
 import CreateRoomModal from '../components/CreateRoomModal';
+import socket from '../config/socket'; // Importamos la conexión a Socket.IO
 
-const HomePage = ({ username }) => {
+const HomePage = () => {
   const [rooms, setRooms] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const username = localStorage.getItem('username');
   const navigate = useNavigate();
 
   const fetchRooms = async () => {
@@ -23,12 +25,13 @@ const HomePage = ({ username }) => {
       const response = await fetch('http://localhost:3000/games', {
         headers: {
           'Authorization': `Bearer ${token}`,
-          'Accept': 'application/json'
-        }
+          'Accept': 'application/json',
+        },
       });
 
       if (response.status === 401) {
         localStorage.removeItem('token');
+        localStorage.removeItem('username');
         navigate('/auth');
         return;
       }
@@ -46,8 +49,20 @@ const HomePage = ({ username }) => {
 
   useEffect(() => {
     fetchRooms();
-    const interval = setInterval(fetchRooms, 5000);
-    return () => clearInterval(interval);
+
+socket.on('room_created', (newRoom) => {
+  const room = { 
+    _id: newRoom._id || newRoom.gameId, 
+    players: newRoom.players || [], 
+    ...newRoom,
+  };
+  setRooms((prevRooms) => [...prevRooms, room]);
+});
+
+    
+    return () => {
+      socket.off('room_created');
+    };
   }, [navigate]);
 
   const handleCreateRoom = async (name) => {
@@ -56,14 +71,11 @@ const HomePage = ({ username }) => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
         },
-        body: JSON.stringify({ name })
+        body: JSON.stringify({ name }),
       });
-      const data = await response.json();
-      if (data.success) {
-        fetchRooms();
-      }
+      
     } catch (error) {
       console.error('Error creating room:', error);
     }
@@ -76,9 +88,11 @@ const HomePage = ({ username }) => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-red-50">
       <Header
-        username={username}
+        username={username || 'Usuario'}
         onLogout={() => {
           localStorage.removeItem('token');
+          localStorage.removeItem('username');
+          localStorage.removeItem('userId');
           window.location.reload();
         }}
       />
