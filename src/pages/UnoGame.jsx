@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
+import { io } from 'socket.io-client';
 
 const UnoGame = () => {
   const { gameId } = useParams();
@@ -23,23 +24,131 @@ const UnoGame = () => {
       card: null,
     }
   });
+  const [socket, setSocket] = useState(null);
 
   // Obtener token
   const getToken = () => localStorage.getItem('token');
+
+  // Inicializar socket
+  useEffect(() => {
+    const newSocket = io('http://localhost:3000');
+    setSocket(newSocket);
+
+    return () => newSocket.close();
+  }, []);
+
+  // Escuchar eventos del socket
+  useEffect(() => {
+    if (!socket) return;
+
+    // Cuando se juega una carta
+    socket.on('card_played', (data) => {
+      if (data.gameId === gameId) {
+        setGame(prev => ({
+          ...prev,
+          topCard: data.cardPlayed,
+          lastPlayedCard: data.cardPlayed,
+          currentTurn: {
+            id: data.playerId,
+            username: data.playerName || 'Jugador'
+          },
+          isMyTurn: data.playerId === localStorage.getItem('userId'),
+          message: `${data.playerName || 'Jugador'} debe jugar`
+        }));
+      }
+    });
+
+    // Cuando alguien roba una carta
+    socket.on('card_drawn', (data) => {
+      if (data.gameId === gameId) {
+        if (data.playerId === localStorage.getItem('userId')) {
+          getUserHand(); // Actualizar la mano del jugador actual
+        }
+        setGame(prev => ({
+          ...prev,
+          currentTurn: {
+            id: data.playerId,
+            username: data.playerName || 'Jugador'
+          },
+          isMyTurn: data.playerId === localStorage.getItem('userId'),
+          message: `${data.playerName || 'Jugador'} debe jugar`
+        }));
+      }
+    });
+
+    // Cuando se reparten las cartas iniciales
+    socket.on('cards_dealt', (data) => {
+      if (data.gameId === gameId) {
+        getUserHand();
+      }
+    });
+
+    // Cuando se revela la carta inicial
+    socket.on('top_card_revealed', (data) => {
+      if (data.gameId === gameId) {
+        setGame(prev => ({
+          ...prev,
+          topCard: data.card,
+          lastPlayedCard: data.card
+        }));
+      }
+    });
+
+    // Cuando alguien dice UNO
+    socket.on('uno_called', (data) => {
+      if (data.gameId === gameId) {
+        setGame(prev => ({
+          ...prev,
+          message: `¡${data.playerName} dijo UNO!`
+        }));
+      }
+    });
+
+    return () => {
+      socket.off('card_played');
+      socket.off('card_drawn');
+      socket.off('cards_dealt');
+      socket.off('top_card_revealed');
+      socket.off('uno_called');
+    };
+  }, [socket, gameId]);
 
   // Inicializar el juego
   useEffect(() => {
     const initializeGame = async () => {
       try {
-        await dealCards();
-        await getTopCard();
+        // Verificar si el juego ya está inicializado
+        const response = await fetch(`http://localhost:3000/top-card/${gameId}`, {
+          headers: {
+            'Authorization': `Bearer ${getToken()}`,
+          }
+        });
+
+        if (!response.ok) {
+          // Si no hay carta superior, inicializar el juego
+          await dealCards();
+          await getTopCard();
+        } else {
+          // Si ya hay carta superior, solo obtener el estado actual
+          const data = await response.json();
+          const topCard = {
+            ...data.topCard.card,
+            _id: data.topCard._id
+          };
+          setGame(prev => ({
+            ...prev,
+            topCard: topCard,
+            lastPlayedCard: topCard
+          }));
+        }
+
         await getUserHand();
         setGame(prev => ({ ...prev, gameStarted: true, loading: false }));
       } catch (error) {
-        setGame(prev => ({ 
-          ...prev, 
+        setGame(prev => ({
+          ...prev,
           error: 'Error al inicializar el juego: ' + error.message,
-          loading: false 
+          loading: false
         }));
       }
     };
@@ -47,6 +156,43 @@ const UnoGame = () => {
     if (gameId) {
       initializeGame();
     }
+  }, [gameId]);
+
+  // Nuevo useEffect para actualizar el estado del juego
+  useEffect(() => {
+    const updateGameState = async () => {
+      try {
+        const response = await fetch(`http://localhost:3000/games/${gameId}/state`, {
+          headers: {
+            'Authorization': `Bearer ${getToken()}`
+          }
+        });
+
+        if (!response.ok) throw new Error('Error al obtener estado del juego');
+
+        const data = await response.json();
+        const currentUserId = localStorage.getItem('userId');
+        
+        setGame(prev => ({
+          ...prev,
+          currentTurn: data.currentPlayer,
+          isMyTurn: data.currentPlayer.id === currentUserId,
+          topCard: data.topCard.card,
+          lastPlayedCard: data.topCard.card,
+          message: `Turno de ${data.currentPlayer.username}`
+        }));
+      } catch (error) {
+        console.error('Error al actualizar estado del juego:', error);
+      }
+    };
+
+    // Actualizar estado inicial
+    updateGameState();
+
+    // Actualizar estado cada 5 segundos
+    const interval = setInterval(updateGameState, 5000);
+
+    return () => clearInterval(interval);
   }, [gameId]);
 
   // Repartir cartas
@@ -77,7 +223,31 @@ const UnoGame = () => {
   // Obtener la carta superior
   const getTopCard = async () => {
     try {
-      const response = await fetch('http://localhost:3000/games/top-card', {
+      // Primero intentamos obtener la última carta jugada
+      const response = await fetch(`http://localhost:3000/top-card/${gameId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${getToken()}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        const topCard = {
+          ...data.topCard.card,
+          _id: data.topCard._id
+        };
+        setGame(prev => ({ 
+          ...prev, 
+          topCard: topCard,
+          lastPlayedCard: topCard
+        }));
+        return data;
+      }
+
+      // Si no hay última carta jugada, obtenemos la primera carta del mazo
+      const initialCardResponse = await fetch('http://localhost:3000/games/top-card', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${getToken()}`,
@@ -88,15 +258,15 @@ const UnoGame = () => {
         })
       });
       
-      if (!response.ok) throw new Error('Error al obtener carta superior');
+      if (!initialCardResponse.ok) throw new Error('Error al obtener carta superior');
       
-      const data = await response.json();
+      const initialCardData = await initialCardResponse.json();
       setGame(prev => ({ 
         ...prev, 
-        topCard: data.top_card,
-        lastPlayedCard: data.top_card
+        topCard: initialCardData.top_card,
+        lastPlayedCard: initialCardData.top_card
       }));
-      return data;
+      return initialCardData;
     } catch (error) {
       console.error('Error al obtener carta superior:', error);
       throw error;
@@ -120,19 +290,24 @@ const UnoGame = () => {
       if (!response.ok) throw new Error('Error al obtener mano');
       
       const data = await response.json();
-      if (data.success) {
+      if (data.success && Array.isArray(data.hand)) {
         setGame(prev => ({ ...prev, hand: data.hand }));
+      } else {
+        setGame(prev => ({ ...prev, hand: [] }));
       }
       return data;
     } catch (error) {
       console.error('Error al obtener mano:', error);
+      setGame(prev => ({ ...prev, hand: [], error: 'Error al obtener mano: ' + error.message }));
       throw error;
     }
   };
 
   // Jugar una carta
   const playCard = async (card) => {
-    if (!game.isMyTurn) {
+    const currentUserId = localStorage.getItem('userId');
+    
+    if (!game.currentTurn || game.currentTurn.id !== currentUserId) {
       setGame(prev => ({ ...prev, message: 'No es tu turno' }));
       return;
     }
@@ -218,7 +393,10 @@ const UnoGame = () => {
       return;
     }
 
-    const card = { ...game.hand[game.selectedCardIndex], color };
+    const card = { 
+      ...game.hand[game.selectedCardIndex],
+      color: null
+    };
 
     try {
       setGame(prev => ({ 
@@ -240,7 +418,13 @@ const UnoGame = () => {
         },
         body: JSON.stringify({
           game_id: gameId,
-          cardPlayed: card
+          cardPlayed: {
+            _id: card._id,
+            type: card.type,
+            value: card.value,
+            color: null
+          },
+          newColor: color
         })
       });
       
@@ -254,8 +438,8 @@ const UnoGame = () => {
       setGame(prev => ({ 
         ...prev, 
         hand: updatedHand,
-        lastPlayedCard: card,
-        topCard: card,
+        lastPlayedCard: { ...card, color },
+        topCard: { ...card, color },
         isMyTurn: false,
         currentTurn: data.nextPlayer,
         message: `Es el turno de ${data.nextPlayer.username}`,
@@ -362,6 +546,16 @@ const UnoGame = () => {
     const isSelected = isHandCard && index === game.selectedCardIndex;
     const selectedClass = isSelected ? 'ring-4 ring-yellow-400 -translate-y-4' : '';
     
+    // Determinar el texto a mostrar en la carta
+    let cardText;
+    if (card.type === 'action') {
+      cardText = card.value; // Para cartas de acción (skip, reverse, draw2)
+    } else if (card.type === 'wild' || card.type === 'wild_draw4') {
+      cardText = card.type === 'wild' ? 'WILD' : '+4';
+    } else {
+      cardText = card.value;
+    }
+    
     return (
       <div 
         className={`${baseClasses} ${sizeClasses} ${backgroundColor} ${selectedClass}`}
@@ -369,7 +563,7 @@ const UnoGame = () => {
       >
         <div className="absolute inset-1 bg-white/10 rounded">
           <div className="flex h-full items-center justify-center text-white font-bold text-xl">
-            {card.type === 'number' ? card.value : card.type}
+            {cardText}
           </div>
         </div>
       </div>
@@ -460,6 +654,27 @@ const UnoGame = () => {
     );
   }
 
+  // Modificar el renderizado de la mano para incluir validación
+  const renderHand = () => {
+    if (!Array.isArray(game.hand)) {
+      return (
+        <div className="text-center text-red-600">
+          Error al cargar las cartas
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex flex-wrap justify-center gap-4">
+        {game.hand.map((card, index) => (
+          <div key={card._id || index} className="transition-transform">
+            {renderCard(card, index, false, true)}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-100 to-purple-100 p-4">
       {/* Animaciones */}
@@ -468,17 +683,30 @@ const UnoGame = () => {
       {/* Selector de color */}
       {renderColorPicker()}
       
-      {/* Mensajes */}
-      {(game.message || game.error) && (
-        <div className={`fixed top-4 left-1/2 transform -translate-x-1/2 p-4 rounded-lg shadow-lg z-50 ${
-          game.error ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
+      {/* Mensajes y Errores */}
+      <div className="fixed top-0 left-0 right-0 z-50">
+        {game.error && (
+          <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 shadow-lg mx-auto max-w-2xl mt-4">
+            <p className="font-bold">Error</p>
+            <p>{game.error}</p>
+          </div>
+        )}
+        
+        {/* Indicador de Turno */}
+        <div className={`text-center p-4 text-2xl font-bold transition-all duration-300 ${
+          game.isMyTurn 
+            ? 'bg-green-500 text-white animate-pulse' 
+            : 'bg-gray-700 text-white'
         }`}>
-          <p className="font-medium">{game.error || game.message}</p>
+          {game.isMyTurn 
+            ? '¡ES TU TURNO!' 
+            : `Turno de: ${game.currentTurn?.username || 'Esperando...'}`
+          }
         </div>
-      )}
+      </div>
       
       {/* Mesa de juego */}
-      <div className="max-w-7xl mx-auto bg-white rounded-xl shadow-xl overflow-hidden">
+      <div className="max-w-7xl mx-auto bg-white rounded-xl shadow-xl overflow-hidden mt-20">
         {/* Cabecera */}
         <div className="bg-indigo-600 p-4 text-white">
           <h1 className="text-2xl font-bold">UNO Game</h1>
@@ -490,11 +718,12 @@ const UnoGame = () => {
           {/* Información del juego */}
           <div className="flex justify-between items-center mb-8">
             <div>
-              <h2 className="text-xl font-semibold text-gray-800">Turno: {game.isMyTurn ? 'Tu turno' : (game.currentTurn ? game.currentTurn.username : 'Esperando...')}</h2>
-            </div>
-            <div>
               <button 
-                className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition"
+                className={`px-6 py-3 rounded-lg font-bold transition-all ${
+                  game.isMyTurn
+                    ? 'bg-red-600 hover:bg-red-700 text-white'
+                    : 'bg-gray-300 cursor-not-allowed text-gray-600'
+                }`}
                 onClick={() => drawCard()}
                 disabled={!game.isMyTurn}
               >

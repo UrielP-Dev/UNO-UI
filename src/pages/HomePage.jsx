@@ -5,7 +5,7 @@ import GameRoomCard from '../components/GameRoomCard';
 import RoomsHeader from '../components/RoomsHeader';
 import Header from '../components/Header';
 import CreateRoomModal from '../components/CreateRoomModal';
-import socket from '../config/socket'; // Importamos la conexión a Socket.IO
+import socket from '../config/socket';
 
 const HomePage = () => {
   const [rooms, setRooms] = useState([]);
@@ -30,8 +30,7 @@ const HomePage = () => {
       });
 
       if (response.status === 401) {
-        localStorage.removeItem('token');
-        localStorage.removeItem('username');
+        localStorage.clear();
         navigate('/auth');
         return;
       }
@@ -50,18 +49,38 @@ const HomePage = () => {
   useEffect(() => {
     fetchRooms();
 
-socket.on('room_created', (newRoom) => {
-  const room = { 
-    _id: newRoom._id || newRoom.gameId, 
-    players: newRoom.players || [], 
-    ...newRoom,
-  };
-  setRooms((prevRooms) => [...prevRooms, room]);
-});
+    // Escuchar creación de salas
+    socket.on('room_created', (newRoom) => {
+      const room = {
+        _id: newRoom._id || newRoom.gameId,
+        players: newRoom.players || [],
+        ...newRoom,
+      };
+      setRooms((prevRooms) => [...prevRooms, room]);
+    });
 
-    
+    // Escuchar actualización de salas (jugadores que se unen o abandonan)
+    socket.on('room_updated', (updatedRoom) => {
+      setRooms((prevRooms) =>
+        prevRooms.map((room) =>
+          room._id === updatedRoom._id ? { ...room, ...updatedRoom } : room
+        )
+      );
+    });
+
+    // Escuchar cuando una sala inicia el juego
+    socket.on('game_started', (gameId) => {
+      setRooms((prevRooms) =>
+        prevRooms.map((room) =>
+          room._id === gameId ? { ...room, state: 'in_progress' } : room
+        )
+      );
+    });
+
     return () => {
       socket.off('room_created');
+      socket.off('room_updated');
+      socket.off('game_started');
     };
   }, [navigate]);
 
@@ -75,9 +94,15 @@ socket.on('room_created', (newRoom) => {
         },
         body: JSON.stringify({ name }),
       });
-      
+
+      if (!response.ok) {
+        throw new Error('Failed to create room');
+      }
+
+      setIsModalOpen(false); // Cerrar el modal tras éxito
     } catch (error) {
       console.error('Error creating room:', error);
+      alert('Error al crear la sala: ' + error.message);
     }
   };
 
@@ -90,9 +115,7 @@ socket.on('room_created', (newRoom) => {
       <Header
         username={username || 'Usuario'}
         onLogout={() => {
-          localStorage.removeItem('token');
-          localStorage.removeItem('username');
-          localStorage.removeItem('userId');
+          localStorage.clear();
           window.location.reload();
         }}
       />
@@ -100,13 +123,8 @@ socket.on('room_created', (newRoom) => {
         <RoomsHeader roomCount={rooms.length} />
         <CreateRoomCard onClick={() => setIsModalOpen(true)} />
         <div className="grid grid-cols-2 gap-4">
-          {rooms.map(room => (
-            <GameRoomCard
-              key={room._id}
-              room={room}
-              onNavigate={navigate}
-              onJoinSuccess={(gameId) => navigate(`/game/${gameId}`)}
-            />
+          {rooms.map((room) => (
+            <GameRoomCard key={room._id} room={room} />
           ))}
         </div>
       </main>

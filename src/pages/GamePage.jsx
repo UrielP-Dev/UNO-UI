@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import io from "socket.io-client";
 
 const GamePage = () => {
   const { gameId } = useParams();
@@ -8,28 +9,41 @@ const GamePage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [userId, setUserId] = useState(null);
-  
+  const [socket, setSocket] = useState(null);
+
+  // Agregar esta línea para determinar si el jugador está en la sala
+  const isPlayerInRoom = gameData?.players?.some(player => player._id === userId);
+  const isHost = gameData?.creator === userId;
+
+  // Conectar al socket y unirse a la sala
+  useEffect(() => {
+    const newSocket = io("http://localhost:3000");
+    setSocket(newSocket);
+
+    newSocket.emit("join_room", { gameId });
+
+    return () => {
+      if (newSocket) {
+        newSocket.emit("leave_room", { gameId });
+        newSocket.disconnect();
+      }
+    };
+  }, [gameId]);
+
+  // Obtener datos del usuario
   const fetchUserData = async () => {
     try {
       const token = localStorage.getItem("token");
-      if (!token) {
-        throw new Error("No token found");
-      }
-      
+      if (!token) throw new Error("No token found");
+
       const response = await fetch("http://localhost:3000/auth/profile", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
-      
-      if (!response.ok) {
-        throw new Error("Failed to fetch user data");
-      }
-      
+      if (!response.ok) throw new Error("Failed to fetch user data");
+
       const userData = await response.json();
       if (userData && userData._id) {
         setUserId(userData._id);
-        console.log("ID de usuario obtenido:", userData._id);
       } else {
         throw new Error("No se pudo obtener el ID de usuario");
       }
@@ -39,20 +53,15 @@ const GamePage = () => {
     }
   };
 
+  // Obtener datos del juego
   const fetchGameData = async () => {
     try {
       const response = await fetch(`http://localhost:3000/games/${gameId}`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
       });
-      if (!response.ok) {
-        throw new Error("Failed to fetch game data");
-      }
+      if (!response.ok) throw new Error("Failed to fetch game data");
 
       const result = await response.json();
-      console.log(result.data.creator);
-      console.log(userId);
       if (result.success) {
         setGameData(result.data);
       } else {
@@ -65,22 +74,53 @@ const GamePage = () => {
     }
   };
 
+  // Manejar eventos de Socket.IO
+  useEffect(() => {
+    if (!socket || !gameId) return;
+
+    const handleGameUpdate = async () => {
+      console.log("Actualizando datos del juego...");
+      await fetchGameData();
+    };
+
+    // Escuchar eventos relacionados con el juego
+    socket.on("player_joined", handleGameUpdate);
+    socket.on("player_left", handleGameUpdate);
+    socket.on("game_started", (data) => {
+      if (data.gameId === gameId) {
+        console.log("Game started:", data);
+        setGameData((prevData) => ({
+          ...prevData,
+          state: "playing",
+        }));
+        navigate(`/uno-game/${gameId}`);
+      }
+    });
+
+    return () => {
+      socket.off("player_joined", handleGameUpdate);
+      socket.off("player_left", handleGameUpdate);
+      socket.off("game_started");
+    };
+  }, [socket, gameId, navigate]);
+
+  // Inicializar datos
   useEffect(() => {
     const initializeData = async () => {
-      await fetchUserData(); // Esperamos que termine antes de continuar
+      await fetchUserData();
     };
-  
     initializeData();
   }, []);
-  
+
   useEffect(() => {
     if (userId) {
       fetchGameData();
-      const interval = setInterval(fetchGameData, 5000); // Polling cada 5s
-      return () => clearInterval(interval);
+      // Notificar al servidor que este usuario se ha unido a la sala
+      if (socket) {
+        socket.emit("player_joined", { gameId, userId });
+      }
     }
-  }, [gameId, userId]); // Se ejecutará cuando `userId` cambie
-  
+  }, [userId, gameId, socket]);
 
   const leaveGame = async () => {
     try {
@@ -90,14 +130,9 @@ const GamePage = () => {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          game_id: gameId,
-        }),
+        body: JSON.stringify({ game_id: gameId }),
       });
-
-      if (!response.ok) {
-        throw new Error("Failed to leave game");
-      }
+      if (!response.ok) throw new Error("Failed to leave game");
 
       navigate("/");
     } catch (err) {
@@ -105,14 +140,8 @@ const GamePage = () => {
     }
   };
 
-  
-
-
   const startGame = async () => {
-
-  console.log("Intentando iniciar el juego..."); // Depuración
     try {
-  
       const response = await fetch("http://localhost:3000/games/start", {
         method: "POST",
         headers: {
@@ -121,25 +150,16 @@ const GamePage = () => {
         },
         body: JSON.stringify({ game_id: gameId }),
       });
-  
-      if (!response.ok) {
-        throw new Error("Failed to start game");
-      }
-  
-      console.log("Redirigiendo a /uno-game/", gameId);
-      navigate(`/uno-game/${gameId}`);
+      if (!response.ok) throw new Error("Failed to start game");
     } catch (err) {
       console.error("Error:", err);
       setError(err.message);
     }
   };
-  
 
   const handleBackToLobby = () => {
     navigate("/");
   };
-
-  const isHost = gameData && gameData.creator === userId;
 
   // Añadir console.log para depuración
   useEffect(() => {
@@ -152,6 +172,38 @@ const GamePage = () => {
       console.log("Todos listos:", gameData.players.every(p => p.ready || p._id === gameData.creator));
     }
   }, [gameData, userId]);
+
+  // Agregar esta función para unirse al juego
+  const joinGame = async () => {
+    try {
+      const response = await fetch('http://localhost:3000/games/join', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        },
+        body: JSON.stringify({ 
+          game_id: gameId 
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Error al unirse al juego');
+      }
+
+      // Emitir evento al socket después de unirse exitosamente
+      socket.emit('join_game', { 
+        gameId,
+        userId: localStorage.getItem('userId'),
+        username: localStorage.getItem('username')
+      });
+
+      // No necesitamos llamar a fetchGameData aquí porque el socket actualizará los datos
+    } catch (error) {
+      console.error('Error joining game:', error);
+      setError(error.message);
+    }
+  };
 
   if (loading) {
     return (
@@ -240,10 +292,9 @@ const GamePage = () => {
                               : "bg-gray-400"
                           }`}
                         >
-                          {player.username[0].toUpperCase()}
+                          {player.username && player.username[0].toUpperCase()}
                         </div>
                         <div>
-                          
                           <span className="font-medium text-amber-900 block">
                             {player.username}
                           </span>
@@ -261,8 +312,6 @@ const GamePage = () => {
                           </div>
                         </div>
                       </div>
-
-                      
                     </div>
                   ))}
                 </div>
@@ -290,6 +339,7 @@ const GamePage = () => {
                   <p>Host: {isHost ? "Sí" : "No"}</p>
                   <p>Estado: {gameData?.state}</p>
                   <p>Jugadores: {gameData?.players.length}</p>
+                  <p>Socket conectado: {socket ? "Sí" : "No"}</p>
                 </div>
                 
                 <div className="space-y-4">
@@ -340,7 +390,7 @@ const GamePage = () => {
                       <button
                         onClick={startGame}
                         className="w-full px-4 py-3 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors duration-200 font-medium shadow-md"
-                        disabled={gameData?.players.length < 2}
+                        disabled={!gameData?.players || gameData.players.length < 2}
                       >
                         Iniciar Juego
                       </button>
@@ -377,14 +427,35 @@ const GamePage = () => {
               Back to Lobby
             </button>
 
-            {/* Sólo se deja el botón para abandonar el juego */}
-            {gameData?.state === "waiting" && (
-              <button
-                onClick={leaveGame}
-                className="px-6 py-3 bg-red-500 text-white rounded-lg hover:bg-red-600 font-medium transition-colors duration-200 shadow-md"
-              >
-                Leave Game
-              </button>
+            {gameData?.state === 'waiting' && (
+              <>
+                {!isPlayerInRoom && (
+                  <button
+                    onClick={joinGame}
+                    className="px-6 py-3 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium transition-colors duration-200 shadow-md"
+                    disabled={gameData?.players?.length >= 6}
+                  >
+                    Join Game
+                  </button>
+                )}
+                {isPlayerInRoom && !isHost && (
+                  <button
+                    onClick={leaveGame}
+                    className="px-6 py-3 bg-red-500 text-white rounded-lg hover:bg-red-600 font-medium transition-colors duration-200 shadow-md"
+                  >
+                    Leave Game
+                  </button>
+                )}
+                {isHost && (
+                  <button
+                    onClick={startGame}
+                    className="px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 font-medium transition-colors duration-200 shadow-md"
+                    disabled={!gameData?.players || gameData.players.length < 2}
+                  >
+                    Start Game
+                  </button>
+                )}
+              </>
             )}
           </div>
         </div>
