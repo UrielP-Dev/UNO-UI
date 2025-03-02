@@ -1034,4 +1034,123 @@ const UnoGame = () => {
           <div className="flex justify-between items-center mb-8">
             <div>
               <button 
-                className={`
+                className={`px-6 py-3 rounded-lg font-bold transition-all ${
+                  game.isMyTurn
+                    ? 'bg-red-600 hover:bg-red-700 text-white'
+                    : 'bg-gray-300 cursor-not-allowed text-gray-600'
+                }`}
+                onClick={() => drawCard()}
+                disabled={!game.isMyTurn}
+              >
+                Robar carta
+              </button>
+            </div>
+          </div>
+          
+          {/* Cartas en mesa */}
+          <div className="bg-indigo-100 rounded-xl p-8 mb-8 flex items-center justify-center space-x-8">
+            {/* Mazo */}
+            <div className="w-24 h-36 bg-indigo-600 rounded-lg shadow-md flex items-center justify-center text-white font-bold">
+              UNO
+            </div>
+            
+            {/* Carta actual */}
+            {game.topCard && (
+              <div className="relative">
+                {renderCard(game.topCard, null, true)}
+                <div className="absolute -bottom-6 left-0 right-0 text-center text-sm font-medium text-gray-600">
+                  Carta actual
+                </div>
+              </div>
+            )}
+          </div>
+          
+          {/* Mano del jugador */}
+          <div className="bg-gray-100 rounded-xl p-6">
+            <h3 className="text-lg font-semibold text-gray-800 mb-4">Tu mano</h3>
+            <div className="flex flex-wrap justify-center gap-4">
+              {game.hand.map((card, index) => (
+                <div key={card._id || index} className="transition-transform">
+                  {renderCard(card, index, false, true)}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Tabla de puntajes mejorada */}
+      <div className="mt-8 max-w-2xl mx-auto">
+        <div className="bg-gradient-to-r from-orange-500 to-red-600 rounded-t-xl p-4">
+          <h2 className="text-2xl font-bold text-white text-center flex items-center justify-center gap-2">
+            <span role="img" aria-label="trophy">🏆</span>
+            Tabla de Posiciones
+            <span role="img" aria-label="trophy">🏆</span>
+          </h2>
+        </div>
+        
+        <div className="bg-white rounded-b-xl shadow-xl overflow-hidden">
+          <div className="p-4">
+            {scores.map((score, index) => (
+              <div 
+                key={index}
+                className={`flex items-center p-4 ${
+                  index % 2 === 0 ? 'bg-orange-50' : 'bg-white'
+                } transition-all hover:bg-orange-100 border-b border-orange-100`}
+              >
+                {/* Posición */}
+                <div className="w-16 flex-shrink-0">
+                  <span className={`
+                    inline-flex items-center justify-center w-8 h-8 rounded-full 
+                    ${index === 0 ? 'bg-yellow-400 text-white' : 
+                      index === 1 ? 'bg-gray-300 text-white' :
+                      index === 2 ? 'bg-orange-700 text-white' :
+                      'bg-gray-100 text-gray-600'}
+                    font-bold text-lg
+                  `}>
+                    {index + 1}
+                  </span>
+                </div>
+
+                {/* Jugador */}
+                <div className="flex-grow">
+                  <div className="flex items-center gap-2">
+                    <span role="img" aria-label="cat" className="text-2xl">
+                      {index === 0 ? '😺' : index === 1 ? '😸' : '😽'}
+                    </span>
+                    <span className="font-semibold text-lg text-gray-800">
+                      {score.player}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Puntos */}
+                <div className="flex-shrink-0 w-32 text-right">
+                  <span className={`
+                    font-bold text-lg
+                    ${index === 0 ? 'text-yellow-600' :
+                      index === 1 ? 'text-gray-600' :
+                      index === 2 ? 'text-orange-700' :
+                      'text-gray-600'}
+                  `}>
+                    {score.points.toLocaleString()} pts
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Footer con estadísticas */}
+          <div className="bg-orange-50 p-4 border-t border-orange-100">
+            <div className="text-center text-sm text-gray-600">
+              <p>Total de jugadores: {scores.length}</p>
+              <p>Puntaje más alto: {scores[0]?.points.toLocaleString() || 0} pts</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default UnoGame;
