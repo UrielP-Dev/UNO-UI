@@ -4,6 +4,7 @@ import AuthPage from './pages/AuthPage'
 import HomePage from './pages/HomePage'
 import GamePage from './pages/GamePage'
 import UnoGame from './pages/UnoGame'
+import Winner from './pages/Winner'
 
 function App() {
   return (
@@ -16,7 +17,7 @@ function App() {
         
       } />
       <Route path="/uno-game/:gameId" element={<UnoGame />} />
-
+      <Route path="/winner/:gameId" element={<Winner />} />
     </Routes>
   );
 }

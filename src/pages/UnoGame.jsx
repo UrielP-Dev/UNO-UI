@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 
 const UnoGame = () => {
+  const navigate = useNavigate();
   const { gameId } = useParams();
   const [game, setGame] = useState({
     topCard: null,
@@ -25,6 +26,7 @@ const UnoGame = () => {
     }
   });
   const [socket, setSocket] = useState(null);
+  const [scores, setScores] = useState([]);
 
   // Obtener token
   const getToken = () => localStorage.getItem('token');
@@ -34,45 +36,73 @@ const UnoGame = () => {
     const newSocket = io('http://localhost:3000');
     setSocket(newSocket);
 
-    return () => newSocket.close();
-  }, []);
+    // Escuchar el evento de fin de juego
+    newSocket.on('game_ended', (data) => {
+      if (data.gameId === gameId) {
+        navigate(`/winner/${gameId}`); // Redirigir a la pantalla de Winner
+      }
+    });
+
+    return () => {
+      newSocket.close();
+    };
+  }, [gameId, navigate]);
 
   // Escuchar eventos del socket
   useEffect(() => {
     if (!socket) return;
 
     // Cuando se juega una carta
-    socket.on('card_played', (data) => {
+    socket.on('card_played', async (data) => {
       if (data.gameId === gameId) {
+        // Actualizar la mano si soy el jugador que jugó
+        if (data.playerId === localStorage.getItem('userId')) {
+          await getUserHand();
+        }
+        
+        // Actualizar los scores después de cada jugada
+        await fetchScores();
+        
         setGame(prev => ({
           ...prev,
           topCard: data.cardPlayed,
           lastPlayedCard: data.cardPlayed,
           currentTurn: {
-            id: data.playerId,
-            username: data.playerName || 'Jugador'
+            id: data.nextPlayerId,
+            username: data.nextPlayerName || 'Jugador'
           },
-          isMyTurn: data.playerId === localStorage.getItem('userId'),
-          message: `${data.playerName || 'Jugador'} debe jugar`
+          isMyTurn: data.nextPlayerId === localStorage.getItem('userId'),
+          message: `${data.nextPlayerName || 'Jugador'} debe jugar`
         }));
       }
     });
 
     // Cuando alguien roba una carta
-    socket.on('card_drawn', (data) => {
+    socket.on('card_drawn', async (data) => {
       if (data.gameId === gameId) {
+        // Actualizar la mano si soy el jugador que robó
         if (data.playerId === localStorage.getItem('userId')) {
-          getUserHand(); // Actualizar la mano del jugador actual
+          await getUserHand();
         }
-        setGame(prev => ({
-          ...prev,
-          currentTurn: {
-            id: data.playerId,
-            username: data.playerName || 'Jugador'
-          },
-          isMyTurn: data.playerId === localStorage.getItem('userId'),
-          message: `${data.playerName || 'Jugador'} debe jugar`
-        }));
+
+        // Obtener el nuevo estado del juego
+        const stateResponse = await fetch(`http://localhost:3000/games/${gameId}/state`, {
+          headers: {
+            'Authorization': `Bearer ${getToken()}`
+          }
+        });
+
+        if (stateResponse.ok) {
+          const stateData = await stateResponse.json();
+          const currentUserId = localStorage.getItem('userId');
+          
+          setGame(prev => ({
+            ...prev,
+            currentTurn: stateData.currentPlayer,
+            isMyTurn: stateData.currentPlayer.id === currentUserId,
+            message: `Turno de ${stateData.currentPlayer.username}`
+          }));
+        }
       }
     });
 
@@ -104,47 +134,131 @@ const UnoGame = () => {
       }
     });
 
+    // Cuando alguien juega una wild card
+    socket.on('wild_card_played', (data) => {
+      if (data.gameId === gameId) {
+        console.log('Wild card jugada por otro jugador:', data);
+        setGame(prev => ({
+          ...prev,
+          message: `¡${data.playerName} cambió el color a ${data.newColor}!`,
+          topCard: {
+            type: data.cardType,
+            color: data.newColor,
+            value: data.cardType === 'wild_draw4' ? '+4' : 'WILD'
+          }
+        }));
+      }
+    });
+
+    // Cuando un jugador gana
+    socket.on('game_over', (data) => {
+      if (data.gameId === gameId) {
+        const isWinner = data.winner === localStorage.getItem('userId');
+        
+        setGame(prev => ({
+          ...prev,
+          gameStarted: false,
+          message: isWinner ? '¡Felicidades! ¡Has ganado!' : `¡${data.playerName} ha ganado la partida!`,
+          animation: {
+            active: true,
+            type: 'winner',
+            card: null
+          }
+        }));
+
+        // Actualizar los scores finales
+        fetchScores();
+
+        // Todos los jugadores serán redirigidos después de la animación
+        setTimeout(() => {
+          navigate(`/winner/${gameId}`);
+        }, 3000);
+      }
+    });
+
+    // Cuando se actualiza el puntaje
+    socket.on('score_updated', (data) => {
+      if (data.gameId === gameId) {
+        fetchScores(); // Actualizar los puntajes en tiempo real
+      }
+    });
+
     return () => {
       socket.off('card_played');
       socket.off('card_drawn');
       socket.off('cards_dealt');
       socket.off('top_card_revealed');
       socket.off('uno_called');
+      socket.off('wild_card_played');
+      socket.off('game_over');
+      socket.off('score_updated');
     };
-  }, [socket, gameId]);
+  }, [socket, gameId, navigate]);
 
-  // Inicializar el juego
+  // Modificar la inicialización del juego
   useEffect(() => {
     const initializeGame = async () => {
       try {
-        // Verificar si el juego ya está inicializado
-        const response = await fetch(`http://localhost:3000/top-card/${gameId}`, {
+        setGame(prev => ({ ...prev, loading: true }));
+        
+        // Primero obtener el estado actual del juego
+        const stateResponse = await fetch(`http://localhost:3000/games/${gameId}/state`, {
           headers: {
-            'Authorization': `Bearer ${getToken()}`,
+            'Authorization': `Bearer ${getToken()}`
           }
         });
 
-        if (!response.ok) {
-          // Si no hay carta superior, inicializar el juego
+        if (!stateResponse.ok) {
+          // Si no hay estado, inicializar el juego
           await dealCards();
-          await getTopCard();
-        } else {
-          // Si ya hay carta superior, solo obtener el estado actual
-          const data = await response.json();
-          const topCard = {
-            ...data.topCard.card,
-            _id: data.topCard._id
-          };
+          const topCardResponse = await fetch('http://localhost:3000/games/top-card', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${getToken()}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              game_id: gameId
+            })
+          });
+
+          if (!topCardResponse.ok) throw new Error('Error al obtener carta inicial');
+          const topCardData = await topCardResponse.json();
+          
           setGame(prev => ({
             ...prev,
-            topCard: topCard,
-            lastPlayedCard: topCard
+            topCard: topCardData.top_card,
+            lastPlayedCard: topCardData.top_card
+          }));
+        } else {
+          // Si hay estado, usarlo
+          const stateData = await stateResponse.json();
+          const currentUserId = localStorage.getItem('userId');
+          
+          setGame(prev => ({
+            ...prev,
+            topCard: stateData.topCard.card,
+            lastPlayedCard: stateData.topCard.card,
+            currentTurn: stateData.currentPlayer,
+            isMyTurn: stateData.currentPlayer.id === currentUserId,
+            message: `Turno de ${stateData.currentPlayer.username}`
           }));
         }
 
+        // Obtener la mano del jugador
         await getUserHand();
-        setGame(prev => ({ ...prev, gameStarted: true, loading: false }));
+        
+        // Obtener los puntajes iniciales
+        await fetchScores();
+
+        setGame(prev => ({ 
+          ...prev, 
+          gameStarted: true, 
+          loading: false 
+        }));
+
       } catch (error) {
+        console.error('Error en initializeGame:', error);
         setGame(prev => ({
           ...prev,
           error: 'Error al inicializar el juego: ' + error.message,
@@ -153,47 +267,42 @@ const UnoGame = () => {
       }
     };
 
-    if (gameId) {
+    if (gameId && socket) {
       initializeGame();
     }
-  }, [gameId]);
+  }, [gameId, socket, navigate]);
 
-  // Nuevo useEffect para actualizar el estado del juego
+  // Eliminar el useEffect de actualización periódica y reemplazarlo con este:
   useEffect(() => {
-    const updateGameState = async () => {
-      try {
-        const response = await fetch(`http://localhost:3000/games/${gameId}/state`, {
-          headers: {
-            'Authorization': `Bearer ${getToken()}`
-          }
-        });
+    if (!socket) return;
 
-        if (!response.ok) throw new Error('Error al obtener estado del juego');
-
-        const data = await response.json();
+    // Escuchar actualizaciones de estado
+    socket.on('state_updated', (data) => {
+      if (data.gameId === gameId) {
         const currentUserId = localStorage.getItem('userId');
-        
         setGame(prev => ({
           ...prev,
-          currentTurn: data.currentPlayer,
-          isMyTurn: data.currentPlayer.id === currentUserId,
-          topCard: data.topCard.card,
-          lastPlayedCard: data.topCard.card,
-          message: `Turno de ${data.currentPlayer.username}`
+          currentTurn: data.state.currentPlayer,
+          isMyTurn: data.state.currentPlayer.id === currentUserId,
+          topCard: data.state.topCard.card,
+          lastPlayedCard: data.state.topCard.card,
+          message: `Turno de ${data.state.currentPlayer.username}`
         }));
-      } catch (error) {
-        console.error('Error al actualizar estado del juego:', error);
       }
+    });
+
+    // Escuchar actualizaciones del historial
+    socket.on('history_updated', (data) => {
+      if (data.gameId === gameId) {
+        fetchScores();
+      }
+    });
+
+    return () => {
+      socket.off('state_updated');
+      socket.off('history_updated');
     };
-
-    // Actualizar estado inicial
-    updateGameState();
-
-    // Actualizar estado cada 5 segundos
-    const interval = setInterval(updateGameState, 5000);
-
-    return () => clearInterval(interval);
-  }, [gameId]);
+  }, [socket, gameId]);
 
   // Repartir cartas
   const dealCards = async () => {
@@ -313,6 +422,11 @@ const UnoGame = () => {
     }
 
     try {
+      // Si es un "draw 2", actualiza la mano del siguiente jugador
+      if (card.type === 'draw2') {
+        await updateNextPlayerHand(game.currentTurn.id, 2); // Llama a la función para actualizar la mano
+      }
+
       // Si es un wild card, mostrar selector de color primero
       if (card.type === 'wild' || card.type === 'wild_draw4') {
         setGame(prev => ({ 
@@ -347,19 +461,52 @@ const UnoGame = () => {
       
       if (!response.ok) throw new Error('Jugada no válida');
       
-      const data = await response.json();
-      
       // Eliminar la carta jugada de la mano
       const updatedHand = game.hand.filter(c => c._id !== card._id);
+
+      // Verificar si el jugador se quedó sin cartas
+      if (updatedHand.length === 0) {
+        // Finalizar el juego y redirigir a la página de Winner
+        await fetch('http://localhost:3000/games/end', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${getToken()}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ game_id: gameId })
+        });
+
+        // Emitir evento de fin de juego para todos los jugadores
+        if (socket) {
+          socket.emit('game_over', {
+            gameId: gameId,
+            winner: currentUserId,
+            playerName: localStorage.getItem('username')
+          });
+        }
+
+        // No es necesario redirigir aquí, ya que se manejará en el listener del socket
+        return;
+      }
+      
+      // Obtener el nuevo estado del juego
+      const stateResponse = await fetch(`http://localhost:3000/games/${gameId}/state`, {
+        headers: {
+          'Authorization': `Bearer ${getToken()}`
+        }
+      });
+
+      if (!stateResponse.ok) throw new Error('Error al obtener el estado del juego');
+      const stateData = await stateResponse.json();
       
       setGame(prev => ({ 
         ...prev, 
         hand: updatedHand,
         lastPlayedCard: card,
         topCard: card,
-        isMyTurn: false,
-        currentTurn: data.nextPlayer,
-        message: `Es el turno de ${data.nextPlayer.username}`,
+        isMyTurn: stateData.currentPlayer.id === currentUserId,
+        currentTurn: stateData.currentPlayer,
+        message: `Es el turno de ${stateData.currentPlayer.username}`,
         loading: false,
         animation: {
           ...prev.animation,
@@ -367,7 +514,9 @@ const UnoGame = () => {
         }
       }));
       
-      return data;
+      // Actualizar scores después de cada jugada
+      await fetchScores();
+
     } catch (error) {
       console.error('Error al jugar carta:', error);
       setGame(prev => ({ 
@@ -384,7 +533,7 @@ const UnoGame = () => {
 
   // Función para seleccionar el color cuando se juega una wild card
   const selectColor = async (color) => {
-    if (game.selectedCardIndex === null || !game.hand[game.selectedCardIndex]) {
+    if (!Array.isArray(game.hand) || game.selectedCardIndex === null || !game.hand[game.selectedCardIndex]) {
       setGame(prev => ({ 
         ...prev, 
         showColorPicker: false,
@@ -393,10 +542,8 @@ const UnoGame = () => {
       return;
     }
 
-    const card = { 
-      ...game.hand[game.selectedCardIndex],
-      color: null
-    };
+    const selectedCard = game.hand[game.selectedCardIndex];
+    const currentUserId = localStorage.getItem('userId');
 
     try {
       setGame(prev => ({ 
@@ -406,7 +553,7 @@ const UnoGame = () => {
         animation: {
           active: true,
           type: 'play',
-          card: card
+          card: selectedCard
         }
       }));
 
@@ -419,9 +566,9 @@ const UnoGame = () => {
         body: JSON.stringify({
           game_id: gameId,
           cardPlayed: {
-            _id: card._id,
-            type: card.type,
-            value: card.value,
+            _id: selectedCard._id,
+            type: selectedCard.type,
+            value: selectedCard.value,
             color: null
           },
           newColor: color
@@ -430,19 +577,64 @@ const UnoGame = () => {
       
       if (!response.ok) throw new Error('Jugada no válida');
       
-      const data = await response.json();
-      
       // Eliminar la carta jugada de la mano
-      const updatedHand = game.hand.filter(c => c._id !== card._id);
+      const updatedHand = game.hand.filter(c => c._id !== selectedCard._id);
+
+      // Verificar si el jugador se quedó sin cartas
+      if (updatedHand.length === 0) {
+        await fetch('http://localhost:3000/games/increment-score', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${getToken()}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            game_id: gameId,
+            points: 500
+          })
+        });
+
+        if (socket) {
+          socket.emit('game_over', {
+            gameId: gameId,
+            winner: currentUserId,
+            playerName: localStorage.getItem('username')
+          });
+        }
+
+        // No es necesario hacer la redirección aquí, ya que se manejará en el listener del socket
+        return;
+      }
+
+      // Obtener el nuevo estado del juego
+      const stateResponse = await fetch(`http://localhost:3000/games/${gameId}/state`, {
+        headers: {
+          'Authorization': `Bearer ${getToken()}`
+        }
+      });
+
+      if (!stateResponse.ok) throw new Error('Error al obtener el estado del juego');
+      const stateData = await stateResponse.json();
+      
+      // Emitir evento de cambio de color a través del socket
+      if (socket) {
+        socket.emit('wild_card_played', {
+          gameId: gameId,
+          playerId: localStorage.getItem('userId'),
+          playerName: localStorage.getItem('username'),
+          cardType: selectedCard.type,
+          newColor: color
+        });
+      }
       
       setGame(prev => ({ 
         ...prev, 
         hand: updatedHand,
-        lastPlayedCard: { ...card, color },
-        topCard: { ...card, color },
-        isMyTurn: false,
-        currentTurn: data.nextPlayer,
-        message: `Es el turno de ${data.nextPlayer.username}`,
+        lastPlayedCard: { ...selectedCard, color },
+        topCard: { ...selectedCard, color },
+        isMyTurn: stateData.currentPlayer.id === currentUserId,
+        currentTurn: stateData.currentPlayer,
+        message: `Es el turno de ${stateData.currentPlayer.username}`,
         selectedCardIndex: null,
         loading: false,
         animation: {
@@ -450,6 +642,10 @@ const UnoGame = () => {
           active: false
         }
       }));
+
+      // Actualizar scores después de cada jugada
+      await fetchScores();
+
     } catch (error) {
       console.error('Error al jugar wild card:', error);
       setGame(prev => ({ 
@@ -496,15 +692,26 @@ const UnoGame = () => {
       
       if (!response.ok) throw new Error('Error al robar carta');
       
-      const data = await response.json();
+      // Obtener el nuevo estado del juego
+      const stateResponse = await fetch(`http://localhost:3000/games/${gameId}/state`, {
+        headers: {
+          'Authorization': `Bearer ${getToken()}`
+        }
+      });
+
+      if (!stateResponse.ok) throw new Error('Error al obtener el estado del juego');
+      const stateData = await stateResponse.json();
       
-      // Añadir la nueva carta a la mano
+      // Actualizar la mano del jugador
       await getUserHand();
+      
+      const currentUserId = localStorage.getItem('userId');
       
       setGame(prev => ({ 
         ...prev, 
-        isMyTurn: false, // Asumimos que el turno pasa al siguiente jugador
-        message: 'Carta robada',
+        isMyTurn: stateData.currentPlayer.id === currentUserId,
+        currentTurn: stateData.currentPlayer,
+        message: `Turno de ${stateData.currentPlayer.username}`,
         loading: false,
         animation: {
           ...prev.animation,
@@ -512,7 +719,6 @@ const UnoGame = () => {
         }
       }));
       
-      return data;
     } catch (error) {
       console.error('Error al robar carta:', error);
       setGame(prev => ({ 
@@ -574,27 +780,32 @@ const UnoGame = () => {
   const renderColorPicker = () => {
     if (!game.showColorPicker) return null;
     
+    const colorOptions = [
+      { name: 'red', label: 'Rojo', class: 'bg-red-600' },
+      { name: 'blue', label: 'Azul', class: 'bg-blue-600' },
+      { name: 'green', label: 'Verde', class: 'bg-green-600' },
+      { name: 'yellow', label: 'Amarillo', class: 'bg-yellow-500' }
+    ];
+    
     return (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
         <div className="bg-white p-6 rounded-lg shadow-lg">
           <h3 className="text-xl font-bold mb-4">Selecciona un color</h3>
           <div className="grid grid-cols-2 gap-4">
-            <button 
-              onClick={() => selectColor('red')}
-              className="w-24 h-24 bg-red-600 rounded-lg hover:ring-4 hover:ring-yellow-400"
-            ></button>
-            <button 
-              onClick={() => selectColor('blue')}
-              className="w-24 h-24 bg-blue-600 rounded-lg hover:ring-4 hover:ring-yellow-400"
-            ></button>
-            <button 
-              onClick={() => selectColor('green')}
-              className="w-24 h-24 bg-green-600 rounded-lg hover:ring-4 hover:ring-yellow-400"
-            ></button>
-            <button 
-              onClick={() => selectColor('yellow')}
-              className="w-24 h-24 bg-yellow-500 rounded-lg hover:ring-4 hover:ring-yellow-400"
-            ></button>
+            {colorOptions.map(color => (
+              <button 
+                key={color.name}
+                onClick={() => {
+                  console.log(`Color seleccionado: ${color.name}`);
+                  selectColor(color.name);
+                }}
+                className={`w-24 h-24 ${color.class} rounded-lg hover:ring-4 hover:ring-yellow-400 relative`}
+              >
+                <span className="absolute inset-0 flex items-center justify-center text-white font-bold">
+                  {color.label}
+                </span>
+              </button>
+            ))}
           </div>
         </div>
       </div>
@@ -628,6 +839,63 @@ const UnoGame = () => {
     return null;
   };
 
+  // Agregar animación de victoria
+  const renderWinnerAnimation = () => {
+    if (game.animation.type !== 'winner') return null;
+
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-xl p-8 text-center transform animate-bounce">
+          <div className="text-6xl mb-4">🎉</div>
+          <h2 className="text-4xl font-bold text-orange-600 mb-4">
+            {game.message}
+          </h2>
+          <div className="text-gray-600">
+            Redirigiendo en unos segundos...
+          </div>
+          <div className="mt-4 flex justify-center gap-2">
+            <span role="img" aria-label="trophy" className="text-4xl">🏆</span>
+            <span role="img" aria-label="star" className="text-4xl">⭐</span>
+            <span role="img" aria-label="party" className="text-4xl">🎊</span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Modificar la función fetchScores para ordenar los puntajes correctamente
+  const fetchScores = async () => {
+    try {
+      const response = await fetch(`http://localhost:3000/games/scores`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${getToken()}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          game_id: gameId
+        })
+      });
+
+      if (!response.ok) throw new Error('Error al obtener puntajes');
+      
+      const data = await response.json();
+      // Ordenar scores de menor a mayor y luego invertir el orden
+      const sortedScores = data.value.scores.sort((a, b) => a.points - b.points).reverse();
+      setScores(sortedScores);
+    } catch (error) {
+      console.error('Error al obtener puntajes:', error);
+    }
+  };
+
+  // Función para actualizar la mano del siguiente jugador
+  const updateNextPlayerHand = async (nextPlayerId, numberOfCards) => {
+    // Lógica para actualizar la mano del siguiente jugador
+    // Esto puede incluir una llamada a un endpoint para obtener las cartas
+    // y luego actualizar el estado del juego
+    await getUserHand(); // Asegúrate de que la mano se actualice
+  };
+
   // Renderizado principal del componente
   if (game.loading && !game.gameStarted) {
     return (
@@ -654,7 +922,6 @@ const UnoGame = () => {
     );
   }
 
-  // Modificar el renderizado de la mano para incluir validación
   const renderHand = () => {
     if (!Array.isArray(game.hand)) {
       return (
@@ -679,6 +946,7 @@ const UnoGame = () => {
     <div className="min-h-screen bg-gradient-to-br from-indigo-100 to-purple-100 p-4">
       {/* Animaciones */}
       {renderAnimation()}
+      {renderWinnerAnimation()}
       
       {/* Selector de color */}
       {renderColorPicker()}
@@ -759,6 +1027,77 @@ const UnoGame = () => {
                   {renderCard(card, index, false, true)}
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Tabla de puntajes mejorada */}
+      <div className="mt-8 max-w-2xl mx-auto">
+        <div className="bg-gradient-to-r from-orange-500 to-red-600 rounded-t-xl p-4">
+          <h2 className="text-2xl font-bold text-white text-center flex items-center justify-center gap-2">
+            <span role="img" aria-label="trophy">🏆</span>
+            Tabla de Posiciones
+            <span role="img" aria-label="trophy">🏆</span>
+          </h2>
+        </div>
+        
+        <div className="bg-white rounded-b-xl shadow-xl overflow-hidden">
+          <div className="p-4">
+            {scores.map((score, index) => (
+              <div 
+                key={index}
+                className={`flex items-center p-4 ${
+                  index % 2 === 0 ? 'bg-orange-50' : 'bg-white'
+                } transition-all hover:bg-orange-100 border-b border-orange-100`}
+              >
+                {/* Posición */}
+                <div className="w-16 flex-shrink-0">
+                  <span className={`
+                    inline-flex items-center justify-center w-8 h-8 rounded-full 
+                    ${index === 0 ? 'bg-yellow-400 text-white' : 
+                      index === 1 ? 'bg-gray-300 text-white' :
+                      index === 2 ? 'bg-orange-700 text-white' :
+                      'bg-gray-100 text-gray-600'}
+                    font-bold text-lg
+                  `}>
+                    {index + 1}
+                  </span>
+                </div>
+
+                {/* Jugador */}
+                <div className="flex-grow">
+                  <div className="flex items-center gap-2">
+                    <span role="img" aria-label="cat" className="text-2xl">
+                      {index === 0 ? '😺' : index === 1 ? '😸' : '😽'}
+                    </span>
+                    <span className="font-semibold text-lg text-gray-800">
+                      {score.player}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Puntos */}
+                <div className="flex-shrink-0 w-32 text-right">
+                  <span className={`
+                    font-bold text-lg
+                    ${index === 0 ? 'text-yellow-600' :
+                      index === 1 ? 'text-gray-600' :
+                      index === 2 ? 'text-orange-700' :
+                      'text-gray-600'}
+                  `}>
+                    {score.points.toLocaleString()} pts
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Footer con estadísticas */}
+          <div className="bg-orange-50 p-4 border-t border-orange-100">
+            <div className="text-center text-sm text-gray-600">
+              <p>Total de jugadores: {scores.length}</p>
+              <p>Puntaje más alto: {scores[0]?.points.toLocaleString() || 0} pts</p>
             </div>
           </div>
         </div>
