@@ -10,42 +10,44 @@ const HighscoresModal = ({ isOpen, onClose, scores }) => {
       <div className="fixed inset-0 bg-black/30" aria-hidden="true" />
       
       <div className="fixed inset-0 flex items-center justify-center p-4">
-        <Dialog.Panel className="mx-auto max-w-3xl rounded-2xl bg-white p-8 w-full shadow-xl">
+        <Dialog.Panel className="mx-auto max-w-3xl rounded-2xl bg-white p-8 w-full shadow-xl max-h-[90vh] flex flex-col">
           <Dialog.Title className="text-2xl font-bold mb-6 text-gray-900 flex items-center gap-2">
             <Trophy className="w-6 h-6 text-orange-500" />
             Tabla de Puntuaciones Más Altas
           </Dialog.Title>
           
-          <div className="overflow-x-auto rounded-xl border border-orange-100">
-            <table className="min-w-full table-auto">
-              <thead className="bg-orange-100">
-                <tr>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Posición</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Jugador</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Puntos</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Sala</th>
-                  <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Fecha</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-orange-100">
-                {scores.map((score, index) => (
-                  <tr 
-                    key={score._id} 
-                    className={index % 2 === 0 ? 'bg-orange-50/50' : 'bg-white'}
-                  >
-                    <td className="px-6 py-4 text-sm">
-                      <span className="font-semibold">{index + 1}°</span>
-                    </td>
-                    <td className="px-6 py-4 text-sm font-medium text-gray-900">{score.player.username}</td>
-                    <td className="px-6 py-4 text-sm font-bold text-orange-600">{score.points}</td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{score.game.name}</td>
-                    <td className="px-6 py-4 text-sm text-gray-500">
-                      {format(new Date(score.createdAt), 'dd MMM yyyy HH:mm', { locale: es })}
-                    </td>
+          <div className="overflow-y-auto flex-1">
+            <div className="overflow-x-auto rounded-xl border border-orange-100">
+              <table className="min-w-full table-auto">
+                <thead className="bg-orange-100">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Posición</th>
+                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Jugador</th>
+                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Puntos</th>
+                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Sala</th>
+                    <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Fecha</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-orange-100">
+                  {scores.map((score, index) => (
+                    <tr 
+                      key={score._id} 
+                      className={index % 2 === 0 ? 'bg-orange-50/50' : 'bg-white'}
+                    >
+                      <td className="px-6 py-4 text-sm">
+                        <span className="font-semibold">{index + 1}°</span>
+                      </td>
+                      <td className="px-6 py-4 text-sm font-medium text-gray-900">{score.player.username}</td>
+                      <td className="px-6 py-4 text-sm font-bold text-orange-600">{score.points}</td>
+                      <td className="px-6 py-4 text-sm text-gray-600">{score.game.name}</td>
+                      <td className="px-6 py-4 text-sm text-gray-500">
+                        {format(new Date(score.createdAt), 'dd MMM yyyy HH:mm', { locale: es })}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
           
           <div className="mt-8 flex justify-end">

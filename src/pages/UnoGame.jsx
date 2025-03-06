@@ -27,9 +27,45 @@ const UnoGame = () => {
   });
   const [socket, setSocket] = useState(null);
   const [scores, setScores] = useState([]);
+  const [notification, setNotification] = useState({
+    message: '',
+    type: '', // 'success', 'error', 'warning'
+    show: false
+  });
 
   // Obtener token
   const getToken = () => localStorage.getItem('token');
+
+  // Función para decir UNO
+  const sayUno = async () => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/uno`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${getToken()}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          action: 'Say UNO',
+          game_id: gameId
+        })
+      });
+
+      const data = await response.json();
+      
+      if (!response.ok) {
+        showNotification(data.message, 'error');
+        return;
+      }
+
+      // Si es exitoso, mostrar notificación temporal
+      showNotification('¡Has dicho UNO!', 'success');
+
+    } catch (error) {
+      console.error('Error al decir UNO:', error);
+      showNotification('Error al decir UNO: ' + error.message, 'error');
+    }
+  };
 
   // Inicializar socket
   useEffect(() => {
@@ -127,10 +163,8 @@ const UnoGame = () => {
     // Cuando alguien dice UNO
     socket.on('uno_called', (data) => {
       if (data.gameId === gameId) {
-        setGame(prev => ({
-          ...prev,
-          message: `¡${data.playerName} dijo UNO!`
-        }));
+        const playerName = data.playerName || 'Un jugador';
+        showNotification(`¡${playerName} tiene UNO!`, 'warning');
       }
     });
 
@@ -943,54 +977,55 @@ const UnoGame = () => {
     }
   };
 
-  // Renderizado principal del componente
-  if (game.loading && !game.gameStarted) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-indigo-100 to-purple-100 flex items-center justify-center">
-        <div className="text-2xl font-bold text-indigo-600 animate-pulse">Cargando el juego...</div>
-      </div>
-    );
-  }
+  // Agregar componente de notificación
+  const renderNotification = () => {
+    if (!notification.show) return null;
 
-  if (game.error && !game.gameStarted) {
+    const bgColor = {
+      success: 'bg-green-500',
+      error: 'bg-red-500',
+      warning: 'bg-yellow-500',
+      info: 'bg-blue-500'
+    }[notification.type];
+
     return (
-      <div className="min-h-screen bg-gradient-to-br from-red-100 to-orange-100 flex items-center justify-center">
-        <div className="bg-white p-8 rounded-xl shadow-xl max-w-md">
-          <h2 className="text-2xl font-bold text-red-600 mb-4">Error</h2>
-          <p className="text-gray-700 mb-6">{game.error}</p>
-          <button 
-            className="w-full py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
-            onClick={() => window.location.reload()}
-          >
-            Reintentar
-          </button>
+      <div className={`fixed top-20 right-4 z-50 ${bgColor} text-white px-6 py-3 rounded-lg shadow-lg transform transition-all duration-500 ease-in-out ${
+        notification.show ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'
+      }`}>
+        <div className="flex items-center gap-2">
+          {notification.type === 'success' && <span>✅</span>}
+          {notification.type === 'error' && <span>❌</span>}
+          {notification.type === 'warning' && <span>⚠️</span>}
+          {notification.type === 'info' && <span>ℹ️</span>}
+          <p className="font-medium">{notification.message}</p>
         </div>
-      </div>
-    );
-  }
-
-  const renderHand = () => {
-    if (!Array.isArray(game.hand)) {
-      return (
-        <div className="text-center text-red-600">
-          Error al cargar las cartas
-        </div>
-      );
-    }
-
-    return (
-      <div className="flex flex-wrap justify-center gap-4">
-        {game.hand.map((card, index) => (
-          <div key={card._id || index} className="transition-transform">
-            {renderCard(card, index, false, true)}
-          </div>
-        ))}
       </div>
     );
   };
 
+  // Función helper para mostrar notificaciones
+  const showNotification = (message, type = 'info') => {
+    setNotification({
+      message,
+      type,
+      show: true
+    });
+
+    // Ocultar la notificación después de 5 segundos
+    setTimeout(() => {
+      setNotification(prev => ({
+        ...prev,
+        show: false
+      }));
+    }, 5000);
+  };
+
+  // Modificar el return principal para incluir las notificaciones
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-100 to-purple-100 p-4">
+      {/* Agregar el componente de notificación */}
+      {renderNotification()}
+      
       {/* Animaciones */}
       {renderAnimation()}
       {renderWinnerAnimation()}
@@ -1043,6 +1078,18 @@ const UnoGame = () => {
                 disabled={!game.isMyTurn}
               >
                 Robar carta
+              </button>
+            </div>
+            <div>
+              <button
+                className={`px-6 py-3 rounded-lg font-bold transition-all 
+                  ${game.hand.length === 1 
+                    ? 'bg-yellow-500 hover:bg-yellow-600 text-white animate-pulse'
+                    : 'bg-yellow-500 hover:bg-yellow-600 text-white'
+                  }`}
+                onClick={sayUno}
+              >
+                ¡UNO!
               </button>
             </div>
           </div>
