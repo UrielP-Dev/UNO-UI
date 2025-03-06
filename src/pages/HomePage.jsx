@@ -123,7 +123,9 @@ const HomePage = () => {
         throw new Error('Failed to create room');
       }
 
-      setIsModalOpen(false); 
+      const newRoom = await response.json();
+      setIsModalOpen(false);
+      navigate(`/game/${newRoom._id || newRoom.gameId}`);
     } catch (error) {
       console.error('Error creating room:', error);
       alert('Error al crear la sala: ' + error.message);
