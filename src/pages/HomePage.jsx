@@ -5,11 +5,14 @@ import GameRoomCard from '../components/GameRoomCard';
 import RoomsHeader from '../components/RoomsHeader';
 import Header from '../components/Header';
 import CreateRoomModal from '../components/CreateRoomModal';
+import HighscoresModal from '../components/HighscoresModal';
 import socket from '../config/socket';
 
 const HomePage = () => {
   const [rooms, setRooms] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isHighscoresModalOpen, setIsHighscoresModalOpen] = useState(false);
+  const [highscores, setHighscores] = useState([]);
   const [loading, setLoading] = useState(true);
   const username = localStorage.getItem('username');
   const navigate = useNavigate();
@@ -43,6 +46,27 @@ const HomePage = () => {
       console.error('Error fetching rooms:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchHighscores = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
+      const response = await fetch('http://localhost:3000/top-scores', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setHighscores(data);
+      }
+    } catch (error) {
+      console.error('Error fetching highscores:', error);
     }
   };
 
@@ -99,7 +123,7 @@ const HomePage = () => {
         throw new Error('Failed to create room');
       }
 
-      setIsModalOpen(false); // Cerrar el modal tras éxito
+      setIsModalOpen(false); 
     } catch (error) {
       console.error('Error creating room:', error);
       alert('Error al crear la sala: ' + error.message);
@@ -120,7 +144,19 @@ const HomePage = () => {
         }}
       />
       <main className="max-w-7xl mx-auto px-4 py-6">
-        <RoomsHeader roomCount={rooms.length} />
+        <div className="flex justify-between items-center mb-6">
+          <RoomsHeader roomCount={rooms.length} />
+          <button
+            onClick={() => {
+              fetchHighscores();
+              setIsHighscoresModalOpen(true);
+            }}
+            className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors flex items-center gap-2"
+          >
+            <span>🏆</span>
+            Ver Puntuaciones Más Altas
+          </button>
+        </div>
         <CreateRoomCard onClick={() => setIsModalOpen(true)} />
         <div className="grid grid-cols-2 gap-4">
           {rooms.map((room) => (
@@ -132,6 +168,11 @@ const HomePage = () => {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onCreateRoom={handleCreateRoom}
+      />
+      <HighscoresModal
+        isOpen={isHighscoresModalOpen}
+        onClose={() => setIsHighscoresModalOpen(false)}
+        scores={highscores}
       />
     </div>
   );

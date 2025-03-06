@@ -111,7 +111,6 @@ const GamePage = () => {
     };
   }, [socket, gameId, navigate]);
 
-  // Inicializar datos
   useEffect(() => {
     const initializeData = async () => {
       await fetchUserData();
@@ -122,7 +121,6 @@ const GamePage = () => {
   useEffect(() => {
     if (userId) {
       fetchGameData();
-      // Notificar al servidor que este usuario se ha unido a la sala
       if (socket) {
         socket.emit("player_joined", { gameId, userId });
       }
