@@ -24,7 +24,7 @@ const GamePage = () => {
 
   // Conectar al socket y unirse a la sala
   useEffect(() => {
-    const newSocket = io("http://localhost:3000");
+    const newSocket = io(import.meta.env.VITE_BACKEND_URL);
     setSocket(newSocket);
 
     newSocket.emit("join_room", { gameId });
@@ -43,7 +43,7 @@ const GamePage = () => {
       const token = localStorage.getItem("token");
       if (!token) throw new Error("No token found");
 
-      const response = await fetch("http://localhost:3000/auth/profile", {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/auth/profile`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) throw new Error("Failed to fetch user data");
@@ -63,7 +63,7 @@ const GamePage = () => {
   // Obtener datos del juego
   const fetchGameData = async () => {
     try {
-      const response = await fetch(`http://localhost:3000/games/${gameId}`, {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/games/${gameId}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
       });
       if (!response.ok) throw new Error("Failed to fetch game data");
@@ -129,7 +129,7 @@ const GamePage = () => {
 
   const leaveGame = async () => {
     try {
-      const response = await fetch(`http://localhost:3000/games/leave`, {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/games/leave`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
@@ -147,7 +147,7 @@ const GamePage = () => {
 
   const startGame = async () => {
     try {
-      const response = await fetch("http://localhost:3000/games/start", {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/games/start`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
@@ -181,7 +181,7 @@ const GamePage = () => {
   // Agregar esta función para unirse al juego
   const joinGame = async () => {
     try {
-      const response = await fetch('http://localhost:3000/games/join', {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/games/join`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

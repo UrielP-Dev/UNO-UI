@@ -12,7 +12,7 @@ const Winner = () => {
   useEffect(() => {
     const fetchFinalScores = async () => {
       try {
-        const response = await fetch(`http://localhost:3000/games/scores`, {
+        const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/games/scores`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${getToken()}`,

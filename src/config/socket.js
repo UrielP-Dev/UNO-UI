@@ -1,7 +1,7 @@
 // src/configsocket.js
 import { io } from 'socket.io-client';
 
-const URL = 'http://localhost:3000'; // Asegúrate de que coincide con la URL de tu backend
+const URL = import.meta.env.VITE_BACKEND_URL;
 const socket = io(URL, {
   path: '/socket.io', // Debe coincidir con la configuración del backend
   transports: ['websocket', 'polling']

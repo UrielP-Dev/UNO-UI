@@ -13,15 +13,15 @@ export const useGameLogic = (gameId, navigate) => {
     try {
       const token = localStorage.getItem("token");
       if (!token) {
-        navigate('/login'); // Usar navigate cuando no hay token
+        navigate('/login');
         return;
       }
 
-      const response = await fetch("http://localhost:3000/auth/profile", {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/auth/profile`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) {
-        navigate('/login'); // Usar navigate cuando hay error en la respuesta
+        navigate('/login');
         throw new Error("Failed to fetch user data");
       }
 
@@ -29,20 +29,20 @@ export const useGameLogic = (gameId, navigate) => {
       if (userData && userData._id) {
         setUserId(userData._id);
       } else {
-        navigate('/login'); // Usar navigate cuando no hay ID de usuario
+        navigate('/login');
         throw new Error("No se pudo obtener el ID de usuario");
       }
     } catch (err) {
       console.error("Error fetching user data:", err);
       setError(err.message);
-      navigate('/login'); // Usar navigate en caso de error
+      navigate('/login');
     }
   };
 
   // Función para obtener datos del juego
   const fetchGameData = async () => {
     try {
-      const response = await fetch(`http://localhost:3000/games/${gameId}`, {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/games/${gameId}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
       });
       if (!response.ok) throw new Error("Failed to fetch game data");
@@ -62,7 +62,7 @@ export const useGameLogic = (gameId, navigate) => {
 
   // Efectos y lógica del socket
   useEffect(() => {
-    const newSocket = io("http://localhost:3000");
+    const newSocket = io(import.meta.env.VITE_BACKEND_URL);
     setSocket(newSocket);
 
     return () => {

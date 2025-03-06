@@ -25,7 +25,7 @@ const HomePage = () => {
         return;
       }
 
-      const response = await fetch('http://localhost:3000/games', {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/games`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
@@ -110,7 +110,7 @@ const HomePage = () => {
 
   const handleCreateRoom = async (name) => {
     try {
-      const response = await fetch('http://localhost:3000/games', {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/games`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

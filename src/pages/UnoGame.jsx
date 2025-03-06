@@ -33,7 +33,7 @@ const UnoGame = () => {
 
   // Inicializar socket
   useEffect(() => {
-    const newSocket = io('http://localhost:3000');
+    const newSocket = io(import.meta.env.VITE_BACKEND_URL);
     setSocket(newSocket);
 
     // Escuchar el evento de fin de juego
@@ -86,7 +86,7 @@ const UnoGame = () => {
         }
 
         // Obtener el nuevo estado del juego
-        const stateResponse = await fetch(`http://localhost:3000/games/${gameId}/state`, {
+        const stateResponse = await fetch(`${import.meta.env.VITE_BACKEND_URL}/games/${gameId}/state`, {
           headers: {
             'Authorization': `Bearer ${getToken()}`
           }
@@ -202,7 +202,7 @@ const UnoGame = () => {
         setGame(prev => ({ ...prev, loading: true }));
         
         // Primero obtener el estado actual del juego
-        const stateResponse = await fetch(`http://localhost:3000/games/${gameId}/state`, {
+        const stateResponse = await fetch(`${import.meta.env.VITE_BACKEND_URL}/games/${gameId}/state`, {
           headers: {
             'Authorization': `Bearer ${getToken()}`
           }
@@ -211,7 +211,7 @@ const UnoGame = () => {
         if (!stateResponse.ok) {
           // Si no hay estado, inicializar el juego
           await dealCards();
-          const topCardResponse = await fetch('http://localhost:3000/games/top-card', {
+          const topCardResponse = await fetch(`${import.meta.env.VITE_BACKEND_URL}/games/top-card`, {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${getToken()}`,
@@ -252,7 +252,7 @@ const UnoGame = () => {
         await fetchScores();
 
         // Mover la obtención del estado del juego al final
-        const stateResponseFinal = await fetch(`http://localhost:3000/games/${gameId}/state`, {
+        const stateResponseFinal = await fetch(`${import.meta.env.VITE_BACKEND_URL}/games/${gameId}/state`, {
           headers: {
             'Authorization': `Bearer ${getToken()}`
           }
@@ -330,7 +330,7 @@ const UnoGame = () => {
   // Repartir cartas
   const dealCards = async () => {
     try {
-      const response = await fetch('http://localhost:3000/games/deal-cards', {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/games/deal-cards`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${getToken()}`,
@@ -356,7 +356,7 @@ const UnoGame = () => {
   const getTopCard = async () => {
     try {
       // Primero intentamos obtener la última carta jugada
-      const response = await fetch(`http://localhost:3000/top-card/${gameId}`, {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/top-card/${gameId}`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${getToken()}`,
@@ -379,7 +379,7 @@ const UnoGame = () => {
       }
 
       // Si no hay última carta jugada, obtenemos la primera carta del mazo
-      const initialCardResponse = await fetch('http://localhost:3000/games/top-card', {
+      const initialCardResponse = await fetch(`${import.meta.env.VITE_BACKEND_URL}/games/top-card`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${getToken()}`,
@@ -408,7 +408,7 @@ const UnoGame = () => {
   // Obtener mano del usuario
   const getUserHand = async () => {
     try {
-      const response = await fetch('http://localhost:3000/hand', {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/hand`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${getToken()}`,
@@ -476,7 +476,7 @@ const UnoGame = () => {
         }
       }));
 
-      const response = await fetch('http://localhost:3000/game-rules/play-card', {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/game-rules/play-card`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${getToken()}`,
@@ -496,7 +496,7 @@ const UnoGame = () => {
       // Verificar si el jugador se quedó sin cartas
       if (updatedHand.length === 0) {
         // Finalizar el juego y redirigir a la página de Winner
-        await fetch('http://localhost:3000/games/end', {
+        await fetch(`${import.meta.env.VITE_BACKEND_URL}/games/end`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${getToken()}`,
@@ -519,7 +519,7 @@ const UnoGame = () => {
       }
       
       // Obtener el nuevo estado del juego
-      const stateResponse = await fetch(`http://localhost:3000/games/${gameId}/state`, {
+      const stateResponse = await fetch(`${import.meta.env.VITE_BACKEND_URL}/games/${gameId}/state`, {
         headers: {
           'Authorization': `Bearer ${getToken()}`
         }
@@ -586,7 +586,7 @@ const UnoGame = () => {
         }
       }));
 
-      const response = await fetch('http://localhost:3000/game-rules/play-card', {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/game-rules/play-card`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${getToken()}`,
@@ -611,7 +611,7 @@ const UnoGame = () => {
 
       // Verificar si el jugador se quedó sin cartas
       if (updatedHand.length === 0) {
-        await fetch('http://localhost:3000/games/increment-score', {
+        await fetch(`${import.meta.env.VITE_BACKEND_URL}/games/increment-score`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${getToken()}`,
@@ -636,7 +636,7 @@ const UnoGame = () => {
       }
 
       // Obtener el nuevo estado del juego
-      const stateResponse = await fetch(`http://localhost:3000/games/${gameId}/state`, {
+      const stateResponse = await fetch(`${import.meta.env.VITE_BACKEND_URL}/games/${gameId}/state`, {
         headers: {
           'Authorization': `Bearer ${getToken()}`
         }
@@ -708,7 +708,7 @@ const UnoGame = () => {
         }
       }));
 
-      const response = await fetch('http://localhost:3000/game-rules/draw-card', {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/game-rules/draw-card`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${getToken()}`,
@@ -722,7 +722,7 @@ const UnoGame = () => {
       if (!response.ok) throw new Error('Error al robar carta');
       
       // Obtener el nuevo estado del juego
-      const stateResponse = await fetch(`http://localhost:3000/games/${gameId}/state`, {
+      const stateResponse = await fetch(`${import.meta.env.VITE_BACKEND_URL}/games/${gameId}/state`, {
         headers: {
           'Authorization': `Bearer ${getToken()}`
         }
@@ -895,7 +895,7 @@ const UnoGame = () => {
   // Modificar la función fetchScores para ordenar los puntajes correctamente
   const fetchScores = async () => {
     try {
-      const response = await fetch(`http://localhost:3000/games/scores`, {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/games/scores`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${getToken()}`,
@@ -919,7 +919,7 @@ const UnoGame = () => {
 
   const handleCreateRoom = async (name) => {
     try {
-      const response = await fetch('http://localhost:3000/games', {
+      const response = await fetch(`${import.meta.env.VITE_BACKEND_URL}/games`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
