@@ -113,12 +113,43 @@ export const playCard = async (gameId, card, newColor = null) => {
       body: JSON.stringify(payload)
     });
     
-    if (!response.ok) throw new Error('Jugada no válida');
+    // Intentar obtener el cuerpo de la respuesta incluso si hay error
+    let data;
+    try {
+      data = await response.json();
+    } catch (e) {
+      data = { message: 'Unknown error' };
+    }
     
-    return await response.json();
+    if (!response.ok) {
+      // Crear mensajes de error más descriptivos en inglés
+      let errorMessage = "Invalid move. Try drawing a card instead.";
+      
+      if (data && data.message) {
+        if (data.message.includes("color")) {
+          errorMessage = "Card color doesn't match. Draw a card or play a matching color.";
+        } else if (data.message.includes("valor") || data.message.includes("value")) {
+          errorMessage = "Card value doesn't match. Draw a card or play a matching value.";
+        } else if (data.message.includes("turno") || data.message.includes("turn")) {
+          errorMessage = "It's not your turn. Please wait.";
+        } else if (data.message.includes("especial") || data.message.includes("special")) {
+          errorMessage = "You can't play this special card now. Try another card or draw.";
+        } else if (response.status === 400) {
+          errorMessage = "Invalid move. The card can't be played. Try drawing a card instead.";
+        }
+      }
+      
+      console.error(`HTTP Error ${response.status}: ${data.message || 'No message'}`);
+      return { success: false, message: errorMessage };
+    }
+    
+    return { ...data, success: true };
   } catch (error) {
     console.error('Error al jugar carta:', error);
-    throw error;
+    return { 
+      success: false, 
+      message: "Connection error. Please try again or draw a card."
+    };
   }
 };
 

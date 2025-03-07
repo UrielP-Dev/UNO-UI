@@ -76,11 +76,20 @@ const HomePage = () => {
     // Escuchar creación de salas
     socket.on('room_created', (newRoom) => {
       const room = {
-        _id: newRoom._id || newRoom.gameId,
-        players: newRoom.players || [],
-        ...newRoom,
+        _id: newRoom.gameId,
+        name: newRoom.name,
+        creator: { _id: newRoom.creator_id },
+        state: newRoom.state,
+        players: newRoom.players.map(player => ({
+          _id: player.player,
+          username: player.username || username
+        }))
       };
-      setRooms((prevRooms) => [...prevRooms, room]);
+      setRooms((prevRooms) => {
+        const exists = prevRooms.some(r => r._id === room._id);
+        if (exists) return prevRooms;
+        return [...prevRooms, room];
+      });
     });
 
     // Escuchar actualización de salas (jugadores que se unen o abandonan)
@@ -106,7 +115,7 @@ const HomePage = () => {
       socket.off('room_updated');
       socket.off('game_started');
     };
-  }, [navigate]);
+  }, [navigate, username]);
 
   const handleCreateRoom = async (name) => {
     try {
@@ -125,7 +134,20 @@ const HomePage = () => {
 
       const newRoom = await response.json();
       setIsModalOpen(false);
-      navigate(`/game/${newRoom._id || newRoom.gameId}`);
+      
+      const room = {
+        _id: newRoom.gameId,
+        name: newRoom.name,
+        creator: { _id: newRoom.creator_id },
+        state: newRoom.state,
+        players: [{
+          _id: newRoom.creator_id,
+          username: username
+        }]
+      };
+      setRooms(prevRooms => [...prevRooms, room]);
+      
+      navigate(`/game/${newRoom.gameId}`);
     } catch (error) {
       console.error('Error creating room:', error);
       alert('Error al crear la sala: ' + error.message);

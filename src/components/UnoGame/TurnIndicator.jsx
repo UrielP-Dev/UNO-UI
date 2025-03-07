@@ -1,10 +1,38 @@
+import { useState, useEffect } from 'react';
+
 const TurnIndicator = ({ isMyTurn, currentTurn, error }) => {
+  const [showError, setShowError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  
+  useEffect(() => {
+    if (error) {
+      setErrorMessage(error);
+      setShowError(true);
+      
+      // Ocultar el error después de 3 segundos
+      const timer = setTimeout(() => {
+        setShowError(false);
+      }, 3000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
+  
   return (
     <div className="fixed top-0 left-0 right-0 z-50">
-      {error && (
-        <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 shadow-lg mx-auto max-w-2xl mt-4">
-          <p className="font-bold">Error</p>
-          <p>{error}</p>
+      {showError && (
+        <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 shadow-lg mx-auto max-w-2xl mt-4 flex justify-between items-center">
+          <div>
+            <p className="font-bold">Error</p>
+            <p>{errorMessage}</p>
+            <p className="text-sm italic mt-1">Try drawing a card instead</p>
+          </div>
+          <button 
+            onClick={() => setShowError(false)}
+            className="text-red-500 hover:text-red-700"
+          >
+            ×
+          </button>
         </div>
       )}
       

@@ -42,12 +42,17 @@ const UnoGame = () => {
   });
 
   // Función para mostrar notificaciones
-  const showNotification = (message, type = 'info') => {
+  const showNotification = (message, type = 'info', duration = 3000) => {
     setNotification({
       message,
       type,
       show: true
     });
+    
+    // Hacer que la notificación desaparezca automáticamente después de la duración especificada
+    setTimeout(() => {
+      setNotification(prev => ({...prev, show: false}));
+    }, duration);
   };
 
   // Función para decir UNO
@@ -362,7 +367,44 @@ const UnoGame = () => {
         }
       }));
 
-      await gameService.playCard(gameId, card);
+      const response = await gameService.playCard(gameId, card);
+      
+      // Detener la animación independientemente del resultado
+      setGame(prev => ({
+        ...prev,
+        loading: false,
+        animation: {
+          ...prev.animation,
+          active: false
+        }
+      }));
+      
+      // Si la carta no se puede jugar, mostrar un mensaje descriptivo
+      if (!response.success) {
+        showNotification(response.message, 'error', 3000);
+        
+        // Actualizar el estado del juego para mantener la sincronización
+        try {
+          const stateData = await gameService.getGameState(gameId);
+          const handData = await gameService.getUserHand(gameId);
+          
+          if (handData.success && Array.isArray(handData.hand)) {
+            setGame(prev => ({ 
+              ...prev, 
+              hand: handData.hand,
+              topCard: stateData.topCard.card,
+              lastPlayedCard: stateData.topCard.card,
+              currentTurn: stateData.currentPlayer,
+              isMyTurn: stateData.currentPlayer.id === currentUserId,
+              message: `Turno de ${stateData.currentPlayer.username}`
+            }));
+          }
+        } catch (syncError) {
+          console.error('Error al sincronizar estado después de jugada inválida:', syncError);
+        }
+        
+        return;
+      }
       
       // Eliminar la carta jugada de la mano
       const updatedHand = game.hand.filter(c => c._id !== card._id);
@@ -401,12 +443,7 @@ const UnoGame = () => {
         topCard: card,
         isMyTurn: stateData.currentPlayer.id === currentUserId,
         currentTurn: stateData.currentPlayer,
-        message: `Es el turno de ${stateData.currentPlayer.username}`,
-        loading: false,
-        animation: {
-          ...prev.animation,
-          active: false
-        }
+        message: `Es el turno de ${stateData.currentPlayer.username}`
       }));
       
       // Actualizar scores después de cada jugada
@@ -415,15 +452,39 @@ const UnoGame = () => {
 
     } catch (error) {
       console.error('Error al jugar carta:', error);
+      
+      // Detener la animación y mostrar el error
       setGame(prev => ({ 
         ...prev, 
-        error: 'Error al jugar carta: ' + error.message,
         loading: false,
         animation: {
           ...prev.animation,
           active: false
         }
       }));
+      
+      showNotification("Connection error. Please try again or draw a card.", 'error', 3000);
+      
+      // Intentar resincronizar el estado del juego
+      try {
+        const stateData = await gameService.getGameState(gameId);
+        const handData = await gameService.getUserHand(gameId);
+        const currentUserId = localStorage.getItem('userId');
+        
+        if (handData.success && Array.isArray(handData.hand)) {
+          setGame(prev => ({ 
+            ...prev, 
+            hand: handData.hand,
+            topCard: stateData.topCard.card,
+            lastPlayedCard: stateData.topCard.card,
+            currentTurn: stateData.currentPlayer,
+            isMyTurn: stateData.currentPlayer.id === currentUserId,
+            message: `Turno de ${stateData.currentPlayer.username}`
+          }));
+        }
+      } catch (syncError) {
+        console.error('Error al resincronizar estado después de error:', syncError);
+      }
     }
   };
 
